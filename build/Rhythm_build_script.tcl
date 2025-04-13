@@ -2,10 +2,10 @@
 set base_dir [exec git rev-parse --show-toplevel]
 
 #Set the project name
-set _xil_proj_name "FPGA_Rhythm_Game"
+set _xil_proj_name_ "FPGA_Rhythm_Game"
 
 #Create project
-create_project $_xil_proj_name $base_dir/build -part xc7a100tcsg324-1 -force 
+create_project $_xil_proj_name_ $base_dir/build -part xc7a100tcsg324-1 -force 
 
 #Set the directory path for the new project
 set proj_dir [get_property directory [current_project]]
