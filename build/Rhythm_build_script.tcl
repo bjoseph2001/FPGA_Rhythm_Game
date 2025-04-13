@@ -4,6 +4,10 @@ set base_dir [exec git rev-parse --show-toplevel]
 #Set the project name
 set _xil_proj_name_ "FPGA_Rhythm_Game"
 
+#Get board files for Nexys A7 from board_files directory
+reset_param board.repoPaths
+set_param board.repoPaths [file normalize "$base_dir/board_files"]
+
 #Create project
 create_project $_xil_proj_name_ $base_dir/build -part xc7a100tcsg324-1 -force 
 
@@ -36,9 +40,12 @@ add_files -fileset sim_1 $sim_files
 update_compile_order -fileset sources_1
 update_compile_order -fileset sim_1
 
+
+
+
 # Set project properties
 set obj [current_project]
-set_property -name "board_part" -value "digilentinc.com:nexys-a7-100t:part0:1.2" -objects $obj
+set_property -name "board_part" -value "digilentinc.com:nexys-a7-100t:part0:1.3" -objects $obj
 set_property -name "default_lib" -value "xil_defaultlib" -objects $obj
 set_property -name "enable_resource_estimation" -value "0" -objects $obj
 set_property -name "enable_vhdl_2008" -value "1" -objects $obj

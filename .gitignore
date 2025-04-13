@@ -1,0 +1,5 @@
+# Ignore everything in build/...
+/build/*
+
+# ...except the TCL script(s) you want to track!
+!/build/*.tcl
