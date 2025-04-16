@@ -816,8 +816,7 @@ begin
     end if;
   end process Serializer;
 
-  SCLK <= sclk_signal when (CS_s = '0') else
-    '1';
+  SCLK <= sclk_signal when (CS_s = '0') else '1';
   SCLK_sig <= sclk_signal;
   CS       <= CS_s;
 

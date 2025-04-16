@@ -32,6 +32,9 @@ use IEEE.NUMERIC_STD.ALL;
 --use UNISIM.VComponents.all;
 
 entity RhythmGame_Top is
+  generic (
+    serial_clock : integer := 5000000 -- clock of fpga board
+  );
   Port (
         CLK100MHZ : in STD_LOGIC;
         RESET_B : in STD_LOGIC;
@@ -72,8 +75,43 @@ architecture Behavioral of RhythmGame_Top is
   signal disp : disp_array:= (x"0",x"1",x"0",x"0",x"C",x"1",x"0",x"0");
 
   --Game Logic--
+  type GameFSM is (Init, BreakState, ClearScreen, BlueSq, RedSq,
+    GreenSq, OutlineSqL, OutlineSqM, OutlineSqR, WaitforInput );
+
+  signal GameState : GameFSM := Init;
+  signal nextGameState : GameFSM;
+
+  signal GameReady : std_logic:= '0'; --Game is ready for an update call
+
   signal OutlineMade : STD_LOGIC := '0';
   signal OutlineSq : unsigned (1 downto 0):= "00";
+  
+  signal MxCnt1ms    : integer := (serial_clock/5000);
+  signal gamePulseMaxCnt : integer := 0;
+  signal pulseGame : std_logic:= '0';
+  signal Game_enable : std_logic := '0';
+
+  type SquareArray is array (0 to 2) of std_logic_vector(95 downto 0);
+
+  signal BlueVector : std_logic_vector(7 downto 0):= x"88";
+  signal BlueReg : std_logic_vector(7 downto 0):= (others => '0');
+  signal BlueSquares : SquareArray;
+  signal BlueMsg : std_logic_vector(95 downto 0):= x"2201001D12FF0000FF000000";
+  signal Blueindex : integer := 0;
+
+  signal RedVector : std_logic_vector(7 downto 0):= x"88";
+  signal RedReg : std_logic_vector(7 downto 0):= (others => '0');
+  signal RedSquares : SquareArray;
+  signal RedMsg : std_logic_vector(95 downto 0):= x"2221003B1200FF0000FF0000";
+  signal Redindex : integer := 0;
+
+  signal GreenVector : std_logic_vector(7 downto 0):= x"88";
+  signal GreenReg : std_logic_vector(7 downto 0):= (others => '0');
+  signal GreenSquares : SquareArray;
+  signal GreenMsg : std_logic_vector(95 downto 0):= x"2240005D120000FF0000FF00";
+  signal Greenindex : integer := 0;
+
+  signal counter : integer := 0;
 
 begin
 
@@ -129,6 +167,14 @@ begin
     seg7_cath => SEG7_CATH
   );
 
+  Game_pulse : entity work.pulseGenerator port map(
+    clk => SCLK_s,
+    reset => RESET_B,
+    maxCount => to_unsigned(gamePulseMaxCnt, 27),
+    pulseOut => pulseGame,
+    EN => Game_enable
+  );
+
  ----- Game Logic-------------
 -- The game starts with 3 square outlines at the bottom of the screen 
 -- Squares of R, B, Y start to move down the screen to their respective
@@ -136,6 +182,64 @@ begin
 -- If done, percentage on 7 segment goes up. Start with 10 squares per game.
 -- If not pressed in time, square will continue off screen and no point awarded.
 -- When game finished, wait for a button press to restart.
+
+--Implementing the squares:
+-- Have each column handle their own squares, should have a command
+-- that sets the square and then a subsequent command that removes it before
+-- moving it down
+-- Implement a delay so that multiple squares can show up in a row on the column
+
+Game_Logic : process(SCLK_s)
+begin
+  if(RESET_B = '1') then
+    GameState <= Init;
+  elsif(falling_edge(sclk_signal)) then
+    case GameState is
+      when Init => 
+        GameReady <= '1';
+        msgReady <= '0';
+        NumberofBytes <= 0;
+        SPIdata <= (others => '0');
+        GameState <= ClearScreen;
+        BlueReg <= BlueVector;
+        RedReg <= RedVector;
+        GreenReg <= GreenVector;
+      when ClearScreen =>
+        if(GameReady = '1' and pulseGame = '1') then
+          if(SPIReady = '1') then
+            GameReady <= '0';
+            SPIdata <= x"2500005F3F00000000000000"; 
+            NumberofBytes <= 11;
+            msgReady <= '1';
+            GameState <= BreakState;
+            nextGameState <= BlueSq;
+            if(counter mod 32 = 0) then
+              --shift all the registers by one
+              BlueReg <= std_logic_vector(unsigned(BlueReg) sll 1);
+              RedReg <= std_logic_vector(unsigned(RedReg) sll 1);
+              GreenReg <= std_logic_vector(unsigned(GreenReg) sll 1);
+            end if;
+          end if;
+        end if;
+      when BreakState => 
+        msgReady <= '0';
+        if(SPIReady = '1') then
+          GameState <= nextGameState;
+        else
+          GameState <= BreakState;
+        end if;
+      when BlueSq =>
+        if(counter mod 32 = 0) then
+          BlueSquares(Blueindex mod 4) <= BlueMsg;
+          Blueindex <= Blueindex + 1;
+        end if;
+        --Need to iterate location of each bluesq in array by 1 send over SPI
+
+        
+        
+
+
+    
 
 Square_Outline : process(RESET_B, SCLK_s)
 begin
