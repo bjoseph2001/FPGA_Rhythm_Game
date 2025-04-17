@@ -32,6 +32,7 @@ set ip_files [glob -nocomplain $base_dir/source/ip/*.xci]
 
 #Add source files
 add_files -fileset sources_1 $src_files
+add_files -fileset sources_1 $ip_files
 #Add constraints
 add_files -fileset constrs_1 $constrs_files
 #Add sim files
