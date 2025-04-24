@@ -34,7 +34,8 @@ entity pulseGenerator is
            reset : in STD_LOGIC;
            maxCount : in unsigned(26 downto 0);
            EN : in STD_LOGIC;
-           pulseOut : out STD_LOGIC);
+           pulseOut : out STD_LOGIC
+        );
 end pulseGenerator;
 
 architecture Behavioral of pulseGenerator is

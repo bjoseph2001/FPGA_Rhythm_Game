@@ -50,17 +50,18 @@ entity SPI_master is
     PMODEnable    : out std_logic;
     SlaveReset    : out std_logic;
     SPIReady      : out std_logic
-  );
-  --    p_delayDone : out STD_LOGIC;
+  --);
+  -- p_delayDone : out STD_LOGIC;
   --    p_SPI_start : out STD_LOGIC;
-  --    p_CurrState : out unsigned(7 downto 0);
+    --  p_CurrState : out unsigned(7 downto 0));
   --    p_Serialize : out STD_LOGIC);
+  );
 end SPI_master;
 
 architecture Behavioral of SPI_master is
 
-  signal MxCnt1ms    : integer := (fpga_clock/1000);
-  signal MxCnt1us    : integer := (fpga_clock/1000000);
+  signal MxCnt1ms    : integer := (5000000/5000);
+  signal MxCnt1us    : integer := (5000000/5000000);
   signal sclk_signal : std_logic;
 
   signal Delay_EN      : std_logic;
@@ -156,10 +157,10 @@ begin
     locked   => locked_s
   );
 
-  Delay : entity work.pulseGenerator
+  Delay : entity work.pulsegeneratorfallingedge
     port map
     (
-      clk      => CLK,
+      clk      => sclk_signal,
       reset    => Reset,
       maxCount => to_unsigned(delayMaxCount, 27),
       pulseOut => delayDone,
@@ -167,7 +168,12 @@ begin
     );
 
   --This will prevent multiple driven nets across common ports used by FSMs
-  ManageFSMports : process (PowerUpState, OffDevice)
+  ManageFSMports : process (PowerUpState, OffDevice, 
+    NormalOpFSM_data, NormalOpFSM_DC, NormalOpFSM_numBytes, NormalOpFSM_Serialize,
+    ShutDownFSM_data, ShutDownFSM_numBytes, ShutDownFSM_delayMaxCount, ShutDownFSM_VCCEN,
+    ShutDownFSM_delay_EN, ShutDownFSM_Serialize, ShutDownFSM_DC,
+    PowerUpFSM_data, PowerUpFSM_numBytes, PowerUpFSM_delayMaxCount, PowerUpFSM_VCCEN,
+    PowerUpFSM_delay_EN, PowerUpFSM_Serialize, PowerUpFSM_DC)
   begin
     if (PowerUpState = Done and OffDevice = '0') then
       --Redirect serializer data in port to look at Data_in
@@ -607,6 +613,7 @@ begin
             if (msgDone = '1') then
               PowerUpState         <= ENVCC;
               PowerUpFSM_Serialize <= '0';
+              PowerUpFSM_delay_EN      <= '0';
             else
               PowerUpState <= ClearScreen;
             end if;

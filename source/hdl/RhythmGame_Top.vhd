@@ -1,171 +1,200 @@
 ----------------------------------------------------------------------------------
--- Company: 
--- Engineer: 
--- 
+-- Company:
+-- Engineer:
+--
 -- Create Date: 03/10/2025 09:32:25 PM
--- Design Name: 
+-- Design Name:
 -- Module Name: RhythmGame_Top - Behavioral
--- Project Name: 
--- Target Devices: 
--- Tool Versions: 
--- Description: 
--- 
--- Dependencies: 
--- 
+-- Project Name:
+-- Target Devices:
+-- Tool Versions:
+-- Description:
+--
+-- Dependencies:
+--
 -- Revision:
 -- Revision 0.01 - File Created
 -- Additional Comments:
--- 
+--
 ----------------------------------------------------------------------------------
-library IEEE;
-use IEEE.STD_LOGIC_1164.all;
 
--- Uncomment the following library declaration if using
--- arithmetic functions with Signed or Unsigned values
-use IEEE.NUMERIC_STD.all;
+library ieee;
+  use ieee.std_logic_1164.all;
+
+  -- Uncomment the following library declaration if using
+  -- arithmetic functions with Signed or Unsigned values
+  use ieee.numeric_std.all;
 
 -- Uncomment the following library declaration if instantiating
 -- any Xilinx leaf cells in this code.
---library UNISIM;
---use UNISIM.VComponents.all;
+-- library UNISIM;
+-- use UNISIM.VComponents.all;
 
-entity RhythmGame_Top is
+entity rhythmgame_top is
   generic (
-    serial_clock : integer := 5000000 -- clock of fpga board
+    serial_clock : integer := 5000000;
+    game_len     : integer := 8
   );
   port (
-    CLK100MHZ : in std_logic;
-    RESET_B   : in std_logic;
-    --Buttons --
-    BTNC : in std_logic;
-    BTNL : in std_logic;
-    BTNR : in std_logic;
+    clk100mhz : in    std_logic;
+    reset_b   : in    std_logic;
+    -- Buttons --
+    btnc : in    std_logic;
+    btnl : in    std_logic;
+    btnr : in    std_logic;
 
-    --7 Segment Display--
-    AN        : out std_logic_vector (7 downto 0);
-    SEG7_CATH : out std_logic_vector(7 downto 0);
-    --OLED Screen--       
-    CS         : out std_logic;
-    MOSI       : out std_logic;
-    DAT_CMD    : out std_logic; --Data/Command Bit 1 = Data. 0 = Command
-    SCLK       : out std_logic; -- Minimum Period is 150ns
-    OLED_RESET : out std_logic;
-    VCC_EN     : out std_logic;
-    PMOD_EN    : out std_logic
+    -- 7 Segment Display--
+    an        : out   std_logic_vector(7 downto 0);
+    seg7_cath : out   std_logic_vector(7 downto 0);
+    -- OLED Screen--
+    cs         : out   std_logic;
+    mosi       : out   std_logic;
+    dat_cmd    : out   std_logic; -- Data/Command Bit 1 = Data. 0 = Command
+    sclk       : out   std_logic; -- Minimum Period is 150ns
+    oled_reset : out   std_logic;
+    vcc_en     : out   std_logic;
+    pmod_en    : out   std_logic
+
+  -- -- --Debug Signals --
+  -- gamestate_out : out integer;
+  -- spidata_out : out std_logic_vector(95 downto 0);
+  -- NumberofBytes_out : out integer;
+  -- blueindex_out : out integer;
+  -- tempindexb_out : out integer;
+  -- bluesquares_one_out : out std_logic_vector(95 downto 0);
+  -- blue_reg_out : out std_logic_vector(7 downto 0);
+  -- bluevector_out : out std_logic_vector(7 downto 0);
+
+  -- CurrState : out unsigned(7 downto 0);
+  -- delayDone : out std_logic
   );
-end RhythmGame_Top;
+end entity rhythmgame_top;
 
-architecture Behavioral of RhythmGame_Top is
+architecture behavioral of rhythmgame_top is
 
-  signal SPIdata       : std_logic_vector(95 downto 0) := (others => '0');
-  signal MISO          : std_logic                     := '0'; --Not used by the OLED module
-  signal msgReady      : std_logic                     := '0';
-  signal NumberofBytes : integer                       := 0;
-  signal OffDevice     : std_logic                     := '0';
-  signal SPIReady      : std_logic                     := '0';
-  signal SCLK_s        : std_logic                     := '0';
+  signal spidata       : std_logic_vector(95 downto 0) := (others => '0');
+  signal miso          : std_logic                     := '0'; -- Not used by the OLED module
+  signal msgready      : std_logic                     := '0';
+  signal numberofbytes : integer                       := 0;
+  signal offdevice     : std_logic                     := '0';
+  signal spiready      : std_logic                     := '0';
+  signal sclk_s        : std_logic                     := '0';
 
-  signal BTNC_d : std_logic;
-  signal BTNL_d : std_logic;
-  signal BTNR_d : std_logic;
+  signal btnc_d : std_logic;
+  signal btnl_d : std_logic;
+  signal btnr_d : std_logic;
 
   type disp_array is array(7 downto 0) of std_logic_vector(3 downto 0);
+
   signal disp : disp_array := (x"0", x"1", x"0", x"0", x"C", x"1", x"0", x"0");
 
-  --Game Logic--
-  type GameFSM is (Init, BreakState, ClearScreen, BlueSq, RedSq,
-    GreenSq, OutlineSqL, OutlineSqM, OutlineSqR, WaitforInput);
+  -- Game Logic--
 
-  signal GameState     : GameFSM := Init;
-  signal nextGameState : GameFSM;
+  type gamefsm is (
+    init, breakstate, enablefill, clearscreen, clearscreen_buff, bluesq, redsq,
+    greensq, updateindices, disablefill, outlinesql, outlinesqm, outlinesqr, waitforinput,
+    gamedone
+  );
 
-  signal GameReady : std_logic := '0'; --Game is ready for an update call
+  signal gamestate     : gamefsm := init;
+  signal nextgamestate : gamefsm;
 
-  signal OutlineMade : std_logic             := '0';
-  signal OutlineSq   : unsigned (1 downto 0) := "00";
+  signal gameready : std_logic := '0'; -- Game is ready for an update call
 
-  signal MxCnt1ms        : integer   := (serial_clock/5000);
-  signal gamePulseMaxCnt : integer   := MxCnt1ms * 500; --start with 500ms per Wait interval
-  signal pulseGame       : std_logic := '0';
-  signal Game_enable     : std_logic := '0';
+  signal mxcnt1ms_sclk   : integer   := (serial_clock / 5000);
+  signal gamepulsemaxcnt : integer   := mxcnt1ms_sclk * 500; -- start with 500ms per Wait interval
+  signal pulsegame       : std_logic := '0';
+  signal game_enable     : std_logic := '0';
 
-  type SquareArray is array (0 to 2) of std_logic_vector(95 downto 0);
+  type squarearray is array (0 to 2) of std_logic_vector(95 downto 0);
 
-  signal BlueVector  : std_logic_vector(7 downto 0) := x"88";
-  signal BlueReg     : std_logic_vector(7 downto 0) := (others => '0');
-  signal BlueSquares : SquareArray;
-  signal BlueMsg     : std_logic_vector(95 downto 0) := x"2201001D12FF0000FF000000";
-  signal Blueindex   : integer                       := 0;
-  signal TempindexB  : integer                       := 0;
+  signal bluevector  : std_logic_vector((game_len - 1) downto 0) := x"88";
+  signal bluereg     : std_logic_vector((game_len - 1) downto 0) := (others => '0');
+  signal bluesquares : squarearray                               := (others => (others => '0'));
+  signal bluemsg     : std_logic_vector(95 downto 0)             := x"2201001D12FF0000FF000000";
+  signal blueindex   : integer                                   := 0;
+  -- signal tempindexb  : integer                       := 0;
 
-  signal RedVector  : std_logic_vector(7 downto 0) := x"88";
-  signal RedReg     : std_logic_vector(7 downto 0) := (others => '0');
-  signal RedSquares : SquareArray;
-  signal RedMsg     : std_logic_vector(95 downto 0) := x"2221003B1200FF0000FF0000";
-  signal Redindex   : integer                       := 0;
-  signal TempindexR : integer                       := 0;
+  signal redvector  : std_logic_vector((game_len - 1) downto 0) := x"88";
+  signal redreg     : std_logic_vector((game_len - 1) downto 0) := (others => '0');
+  signal redsquares : squarearray                               := (others => (others => '0'));
+  signal redmsg     : std_logic_vector(95 downto 0)             := x"2221003B1200FF0000FF0000";
+  signal redindex   : integer                                   := 0;
+  -- signal tempindexr : integer                       := 0;
 
-  signal GreenVector  : std_logic_vector(7 downto 0) := x"88";
-  signal GreenReg     : std_logic_vector(7 downto 0) := (others => '0');
-  signal GreenSquares : SquareArray;
-  signal GreenMsg     : std_logic_vector(95 downto 0) := x"2240005D120000FF0000FF00";
-  signal Greenindex   : integer                       := 0;
-  signal TempindexG   : integer                       := 0;
+  signal greenvector  : std_logic_vector((game_len - 1) downto 0) := x"88";
+  signal greenreg     : std_logic_vector((game_len - 1) downto 0) := (others => '0');
+  signal greensquares : squarearray                               := (others => (others => '0'));
+  signal greenmsg     : std_logic_vector(95 downto 0)             := x"2240005D120000FF0000FF00";
+  signal greenindex   : integer                                   := 0;
+  -- signal tempindexg   : integer                       := 0;
+
+  signal tempindex : integer := 0; -- to iterate through each square array
 
   signal counter : integer := 0;
 
+-- --Debug signal --
+-- signal logicstate : integer := 0;
+
 begin
 
-  OLED_SPI : entity work.SPI_master
-    port map
-    (
-      CLK           => CLK100MHZ,
-      Data_in       => SPIdata,
-      Reset         => RESET_B,
-      msgReady      => msgReady,
-      NumberofBytes => NumberofBytes,
-      OffDevice     => OffDevice,
-      CS            => CS,
-      MOSI          => MOSI,
-      MISO          => MISO,
-      SCLK          => SCLK,
-      SCLK_sig      => SCLK_s,
-      Data_Command  => DAT_CMD,
-      PMODEnable    => PMOD_EN,
-      VCCEnable     => VCC_EN,
-      SlaveReset    => OLED_RESET,
-      SPIReady      => SPIReady
+  -- --Debug assignments
+  -- gamestate_out <= logicstate;
+  -- spidata_out <= spidata;
+  -- NumberofBytes_out <= numberofbytes;
+  -- blueindex_out <= blueindex;
+  -- tempindexb_out <= tempindexb;
+  -- bluesquares_one_out <= bluesquares(0);
+  -- blue_reg_out <= bluereg;
+  -- bluevector_out <= bluevector;
+
+  oled_spi : entity work.spi_master
+    port map (
+      clk           => clk100mhz,
+      data_in       => spidata,
+      reset         => reset_b,
+      msgready      => msgready,
+      numberofbytes => numberofbytes,
+      offdevice     => offdevice,
+      cs            => cs,
+      mosi          => mosi,
+      miso          => miso,
+      sclk          => sclk,
+      sclk_sig      => sclk_s,
+      data_command  => dat_cmd,
+      pmodenable    => pmod_en,
+      vccenable     => vcc_en,
+      slavereset    => oled_reset,
+      spiready      => spiready
+    -- p_CurrState   => CurrState,
+    -- p_delayDone   => delayDone
     );
 
-  Debounce_C : entity work.Debounce
-    port map
-    (
-      BTNI => BTNC,
-      BTNO => BTNC_d,
-      CLK  => CLK100MHZ
+  debounce_c : entity work.debounce
+    port map (
+      btni => btnc,
+      btno => btnc_d,
+      clk  => clk100mhz
     );
 
-  Debounce_L : entity work.Debounce
-    port map
-    (
-      BTNI => BTNL,
-      BTNO => BTNL_d,
-      CLK  => CLK100MHZ
+  debounce_l : entity work.debounce
+    port map (
+      btni => btnl,
+      btno => btnl_d,
+      clk  => clk100mhz
     );
 
-  Debounce_R : entity work.Debounce
-    port map
-    (
-      BTNI => BTNR,
-      BTNO => BTNR_d,
-      CLK  => CLK100MHZ
+  debounce_r : entity work.debounce
+    port map (
+      btni => btnr,
+      btno => btnr_d,
+      clk  => clk100mhz
     );
 
-  Seg7_Disp : entity work.seg7_controller
-    port map
-    (
-      clk100    => CLK100MHZ,
-      rst       => RESET_B,
+  seg7_disp : entity work.seg7_controller
+    port map (
+      clk100    => clk100mhz,
+      rst       => reset_b,
       char0     => disp(0),
       char1     => disp(1),
       char2     => disp(2),
@@ -174,217 +203,280 @@ begin
       char5     => disp(5),
       char6     => disp(6),
       char7     => disp(7),
-      an        => AN,
-      seg7_cath => SEG7_CATH
+      an        => an,
+      seg7_cath => seg7_cath
     );
 
-  Game_pulse : entity work.pulseGeneratorFallingEdge
-    port map
-    (
-      clk      => SCLK_s,
-      reset    => RESET_B,
-      maxCount => to_unsigned(gamePulseMaxCnt, 27),
-      pulseOut => pulseGame,
-      EN       => Game_enable
+  game_pulse : entity work.pulsegeneratorfallingedge
+    port map (
+      clk      => sclk_s,
+      reset    => reset_b,
+      maxcount => to_unsigned(gamepulsemaxcnt, 27),
+      pulseout => pulsegame,
+      en       => game_enable
     );
 
   ----- Game Logic-------------
-  -- The game starts with 3 square outlines at the bottom of the screen 
+  -- The game starts with 3 square outlines at the bottom of the screen
   -- Squares of R, B, Y start to move down the screen to their respective
   -- outlines, when they cover the outline, the correct button must be pressed
   -- If done, percentage on 7 segment goes up. Start with 10 squares per game.
   -- If not pressed in time, square will continue off screen and no point awarded.
   -- When game finished, wait for a button press to restart.
 
-  --Implementing the squares:
+  -- Implementing the squares:
   -- Have each column handle their own squares, should have a command
   -- that sets the square and then a subsequent command that removes it before
   -- moving it down
   -- Implement a delay so that multiple squares can show up in a row on the column
 
-  Game_Logic : process (SCLK_s)
+  game_logic : process (sclk_s, reset_b) is
   begin
-    if (RESET_B = '1') then
-      GameState <= Init;
-    elsif (falling_edge(SCLK_s)) then
-      case GameState is
-        when Init =>
-          GameReady     <= '1';
-          msgReady      <= '0';
-          NumberofBytes <= 0;
-          SPIdata       <= (others => '0');
-          GameState     <= ClearScreen;
-          BlueReg       <= BlueVector;
-          RedReg        <= RedVector;
-          GreenReg      <= GreenVector;
-        when ClearScreen =>
-          if (GameReady = '1') then
-            if (SPIReady = '1') then
-              GameReady     <= '0';
-              SPIdata       <= x"2500005F3F00000000000000";
-              NumberofBytes <= 11;
-              msgReady      <= '1';
-              GameState     <= BreakState;
-              nextGameState <= BlueSq;
-              if (counter mod 32 = 0) then
-                --shift all the registers by one
-                BlueReg  <= std_logic_vector(unsigned(BlueReg) sll 1);
-                RedReg   <= std_logic_vector(unsigned(RedReg) sll 1);
-                GreenReg <= std_logic_vector(unsigned(GreenReg) sll 1);
+
+    if (reset_b = '1') then
+      gamestate <= init;
+    elsif (falling_edge(sclk_s)) then
+
+      case gamestate is
+
+        when init =>
+
+          gameready     <= '1';
+          msgready      <= '0';
+          numberofbytes <= 0;
+          spidata       <= (others => '0');
+          gamestate     <= enablefill;
+          bluereg       <= bluevector;
+          redreg        <= redvector;
+          greenreg      <= greenvector;
+          counter       <= 0;
+          tempindex     <= 0;
+        -- logicstate <= 1;
+
+        when enablefill =>
+
+          if (gameready = '1') then
+            if (spiready = '1') then
+              gameready     <= '0';
+              spidata       <= x"260100000000000000000000";
+              numberofbytes <= 2;
+              msgready      <= '1';
+              gamestate     <= breakstate;
+              nextgamestate <= clearscreen;
+            -- logicstate <= 2;
+            end if;
+          end if;
+
+        when clearscreen =>
+
+          if (spiready = '1') then
+            spidata       <= x"2500005F3F00000000000000";
+            numberofbytes <= 11;
+            msgready      <= '1';
+            gamestate     <= breakstate;
+            nextgamestate <= clearscreen_buff;
+            -- logicstate <= 3;
+            -- Reset all tempindex
+            tempindex <= 0;
+            if (counter mod 32 = 0) then
+              -- shift all the registers by one
+              bluereg  <= std_logic_vector(unsigned(bluereg) sll 1);
+              redreg   <= std_logic_vector(unsigned(redreg) sll 1);
+              greenreg <= std_logic_vector(unsigned(greenreg) sll 1);
+            end if;
+          end if;
+
+        when clearscreen_buff =>
+
+          gamestate <= bluesq;
+        -- logicstate <= 4;
+
+        when breakstate =>
+
+          msgready <= '0';
+          -- logicstate <= 30;
+          if (spiready = '1') then
+            gamestate <= nextgamestate;
+          else
+            gamestate <= breakstate;
+          end if;
+
+        when bluesq =>
+
+          -- Check if there is enough space to fit a new square
+          -- If TempindexB > 0 then don't need to add more squares
+          -- logicstate <= 4;
+          if (spiready = '1') then
+            if (counter mod 32 = 0 and tempindex = 0) then
+              -- Add new square to available space in array
+              -- check if this is the first loop
+              if (bluereg(7) = '1') then
+                bluesquares(blueindex mod 3) <= bluemsg;
+              else
+                bluesquares(blueindex mod 3) <= (others => '0');
               end if;
+            -- elsif (tempindex = 1) then
+            --   -- increment blueindex to point to next available vector in squarearray
+            --   blueindex <= blueindex + 1;
             end if;
+
+            spidata       <= bluesquares(tempindex);
+            numberofbytes <= 11;
+            msgready      <= '1';
+            gamestate     <= breakstate;
+            nextgamestate <= redsq;
+            -- Move blue square down for next time
+            bluesquares(tempindex) <= std_logic_vector(unsigned(bluesquares(tempindex)) + x"000001000100000000000000");
           end if;
-        when BreakState =>
-          msgReady <= '0';
-          if (SPIReady = '1') then
-            GameState <= nextGameState;
+
+        -- Display 1 square for each column at a time, iterate the previous squares column so no multiply
+        -- driven nets. Keep looping between states until all squares are displayed (3 loops, 12 states total including BreakStates)
+        when redsq =>
+
+          -- logicstate <= 5;
+          if (spiready = '1') then
+            -- Check if there is enough space to fit a new square
+            -- If TempindexR > 0 then don't need to add more squares
+            if (counter mod 32 = 0 and tempindex = 0) then
+              -- Add new square to available space in array
+              -- check if this is the first loop
+              if (redreg(7) = '1') then
+                redsquares(redindex mod 3) <= redmsg;
+              else
+                redsquares(redindex mod 3) <= (others => '0');
+              end if;
+            -- elsif (tempindex = 1) then
+            --   -- increment redindex to point to next available vector in squarearray
+            --   redindex <= redindex + 1;
+            end if;
+
+            spidata       <= redsquares(tempindex);
+            numberofbytes <= 11;
+            msgready      <= '1';
+            gamestate     <= breakstate;
+            nextgamestate <= greensq;
+            -- Move red square down for next time
+            redsquares(tempindex) <= std_logic_vector(unsigned(redsquares(tempindex)) + x"000001000100000000000000");
+          end if;
+
+        when greensq =>
+
+          -- logicstate <= 6;
+          if (spiready = '1') then
+            -- Check if there is enough space to fit a new square
+            -- If TempindexG > 0 then don't need to add more squares
+            if (counter mod 32 = 0 and tempindex = 0) then
+              -- Add new square to available space in array
+              -- check if this is the first loop
+              if (greenreg(7) = '1') then
+                greensquares(greenindex mod 3) <= greenmsg;
+              else
+                greensquares(greenindex mod 3) <= (others => '0');
+              end if;
+            -- elsif (tempindex = 1) then
+            --   -- increment greenindex to point to next available vector in squarearray
+            --   greenindex <= greenindex + 1;
+            end if;
+
+            spidata       <= greensquares(tempindex);
+            numberofbytes <= 11;
+            msgready      <= '1';
+            gamestate     <= breakstate;
+            nextgamestate <= updateindices;
+            -- Move red square down for next time
+            greensquares(tempindex) <= std_logic_vector(unsigned(greensquares(tempindex)) + x"000001000100000000000000");
+          end if;
+
+        when updateindices =>
+
+          -- Update all indices for vectors and arrays here
+          tempindex <= tempindex + 1;
+          if(tempindex = 1) then
+            blueindex <= blueindex + 1;
+            redindex <= redindex + 1;
+            greenindex <= greenindex + 1;
+          end if;
+          if (tempindex > 2) then
+            -- displayed all squares, put outline squares back
+            nextgamestate <= disablefill;
           else
-            GameState <= BreakState;
+            -- not done displaying all squares loop back
+            nextgamestate <= bluesq;
           end if;
-        when BlueSq =>
-          --Check if there is enough space to fit a new square
-          --If TempindexB > 0 then don't need to add more squares
-          if (BlueReg(7) = '1') then
-            if (counter mod 32 = 0 and TempindexB = 0) then
-              --Add new square to available space in array
-              BlueSquares(Blueindex mod 3) <= BlueMsg;
-            elsif (TempindexB > 0) then
-              Greenindex <= Greenindex + 1;
-            end if;
+
+        when disablefill =>
+
+          -- logicstate <= 7;
+          if (spiready = '1') then
+            spidata       <= x"260000000000000000000000";
+            numberofbytes <= 2;
+            msgready      <= '1';
+            gamestate     <= breakstate;
+            nextgamestate <= outlinesql;
           end if;
-          if (SPIReady = '1') then
-            SPIdata       <= BlueSquares(TempindexB);
-            NumberofBytes <= 11;
-            msgReady      <= '1';
-            GameState     <= BreakState;
-            nextGameState <= RedSq;
-            if (TempindexB > 0) then
-              --Check if this is the first loop, don't want to premptively iterate the squares
-              TempindexG                   <= TempindexG + 1;
-              GreenSquares(Greenindex - 1) <= std_logic_vector(unsigned(GreenSquares(Greenindex - 1)) + x"000001000100000000000000");
-            end if;
+
+        when outlinesql =>
+
+          -- logicstate <= 8;
+          counter <= counter + 1;                                                                                                          -- Squares have all been moved by 1
+          if (spiready = '1') then
+            spidata       <= x"22002B1E3FFFFFFFFFFFFF00";                                                                                  -- Leftmost Square
+            numberofbytes <= 11;
+            msgready      <= '1';
+            gamestate     <= breakstate;
+            nextgamestate <= outlinesqm;
           end if;
-          --Display 1 square for each column at a time, iterate the previous squares column so no multiply
-          --driven nets. Keep looping between states untill all squares are displayed (3 loops, 12 states total including BreakStates)
-        when RedSq =>
-          --Check if there is enough space to fit a new square
-          --If TempindexR > 0 then don't need to add more squares
-          if (RedReg(7) = '1') then
-            if (counter mod 32 = 0 and TempindexR = 0) then
-              --Add new square to available space in array
-              RedSquares(Redindex mod 3) <= RedMsg;
-            elsif (TempindexR > 0) then
-              Blueindex <= Blueindex + 1;
-            end if;
+
+        when outlinesqm =>
+
+          -- logicstate <= 9;
+          if (spiready = '1') then
+            spidata       <= x"22202B3D3FFFFFFFFFFFFF00";                                                                                  -- Middle Square
+            numberofbytes <= 11;
+            msgready      <= '1';
+            gamestate     <= breakstate;
+            nextgamestate <= outlinesqr;
           end if;
-          if (SPIReady = '1') then
-            SPIdata                    <= RedSquares(TempindexR);
-            NumberofBytes              <= 11;
-            msgReady                   <= '1';
-            GameState                  <= BreakState;
-            nextGameState              <= GreenSq;
-            TempindexB                 <= TempindexB + 1;
-            BlueSquares(Blueindex - 1) <= std_logic_vector(unsigned(BlueSquares(Blueindex - 1)) + x"000001000100000000000000");
+
+        when outlinesqr =>
+
+          -- logicstate <= 10;
+          if (spiready = '1') then
+            spidata       <= x"223F2B5E3FFFFFFFFFFFFF00";                                                                                  -- Rightmost Square
+            numberofbytes <= 11;
+            msgready      <= '1';
+            gamestate     <= breakstate;
+            nextgamestate <= waitforinput;
           end if;
-        when GreenSq =>
-          --Check if there is enough space to fit a new square
-          --If TempindexG > 0 then don't need to add more squares
-          if (GreenReg(7) = '1') then
-            if (counter mod 32 = 0 and TempindexG = 0) then
-              --Add new square to available space in array
-              GreenSquares(Greenindex mod 3) <= GreenMsg;
-            elsif (TempindexG > 0) then
-              Redindex <= Redindex + 1;
-            end if;
-          end if;
-          if (SPIReady = '1') then
-            SPIdata                  <= GreenSquares(TempindexG);
-            NumberofBytes            <= 11;
-            msgReady                 <= '1';
-            GameState                <= BreakState;
-            TempindexR               <= TempindexR + 1;
-            RedSquares(Redindex - 1) <= std_logic_vector(unsigned(RedSquares(Redindex - 1)) + x"000001000100000000000000");
-            if (TempindexG > 2) then
-              nextGameState <= OutlineSqL;
-            else
-              nextGameState <= BlueSq;
-            end if;
-          end if;
-        when OutlineSqL =>
-          counter <= counter + 1; --Squares have all been moved by 1
-          if (SPIReady = '1') then
-            SPIdata       <= x"22002B1E3FFFFFFFFFFFFF00"; -- Leftmost Square
-            NumberofBytes <= 11;
-            msgReady      <= '1';
-            GameState     <= BreakState;
-            nextGameState <= OutlineSqM;
-          end if;
-        when OutlineSqM =>
-          if (SPIReady = '1') then
-            SPIdata       <= x"22202B3D3FFFFFFFFFFFFF00"; -- Middle Square
-            NumberofBytes <= 11;
-            msgReady      <= '1';
-            GameState     <= BreakState;
-            nextGameState <= OutlineSqR;
-          end if;
-        when OutlineSqR =>
-          if (SPIReady = '1') then
-            SPIdata       <= x"223F2B5E3FFFFFFFFFFFFF00"; -- Rightmost Square
-            NumberofBytes <= 11;
-            msgReady      <= '1';
-            GameState     <= BreakState;
-            nextGameState <= WaitforInput;
-          end if;
-        when WaitforInput =>
+
+        when waitforinput =>
+
+          -- logicstate <= 11;
           if ((500 - (50 * counter - 1)) >= 250) then
-            gamePulseMaxCnt <= MxCnt1ms * (500 - (50 * counter - 1)); --shorten delay for every loop
+            gamepulsemaxcnt <= mxcnt1ms_sclk * (500 - (50 * counter - 1));                                                                 -- shorten delay for every loop
           else
-            --cap at 250ms since thats the time to debounce pushbuttons 
-            gamePulseMaxCnt <= MxCnt1ms * 250;
+            -- cap at 250ms since thats the time to debounce pushbuttons
+            gamepulsemaxcnt <= mxcnt1ms_sclk * 250;
           end if;
-          Game_enable <= '1';
-          if (pulseGame = '1') then
-            GameReady <= '1';
-            GameState <= ClearScreen;
+          game_enable <= '1';
+          if (pulsegame = '1') then
+            if (counter / 32 > game_len) then
+              gamestate <= gamedone;
+            else
+              gameready <= '1';
+              gamestate <= clearscreen;
+            end if;
           end if;
+
+        when gamedone =>
+
+          -- do nothing game is done
+          gamestate <= gamedone;
+
       end case;
+
     end if;
 
-  end process Game_Logic;
+  end process game_logic;
 
-  -- Square_Outline : process (RESET_B, SCLK_s)
-  -- begin
-  --   if (RESET_B = '1') then
-  --     OutlineMade <= '0';
-  --     OutlineSq   <= "00";
-  --     msgReady    <= '0';
-  --   elsif (falling_edge(SCLK_s)) then
-  --     if (SPIReady = '1' and OutlineMade = '0') then
-  --       case OutlineSq is
-  --         when "00" =>
-  --           SPIdata       <= x"22002B1E3FFFFFFFFFFFFF00"; -- Leftmost Square
-  --           NumberofBytes <= 11;
-  --           msgReady      <= '1';
-  --           OutlineSq     <= "01";
-  --         when "01" =>
-  --           SPIdata       <= x"22202B3D3FFFFFFFFFFFFF00"; -- Middle Square
-  --           NumberofBytes <= 11;
-  --           msgReady      <= '1';
-  --           OutlineSq     <= "10";
-  --         when "10" =>
-  --           SPIdata       <= x"223F2B5E3FFFFFFFFFFFFF00"; -- Right Square
-  --           NumberofBytes <= 11;
-  --           msgReady      <= '1';
-  --           OutlineSq     <= "11";
-  --         when "11" =>
-  --           OutlineMade <= '1';
-  --           msgReady    <= '0';
-  --       end case;
-  --     else
-  --       msgReady <= '0';
-  --     end if;
-  --   end if;
-
-  -- end process Square_Outline;
-
-end Behavioral;
+end architecture behavioral;
