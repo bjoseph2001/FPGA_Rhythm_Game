@@ -64,8 +64,8 @@ architecture Behavioral of Testbench_GameLogic is
     signal blue_reg : std_logic_vector(7 downto 0);
     signal bluevector : std_logic_vector(7 downto 0); 
 
-    signal currstate : unsigned(7 downto 0);
-    signal delayDone : std_logic;
+    -- signal currstate : unsigned(7 downto 0);
+    -- signal delayDone : std_logic;
 
 begin
 
@@ -93,10 +93,10 @@ begin
         tempindexb_out => tempindexb,
         bluesquares_one_out => bluesquares_one,
         blue_reg_out => blue_reg,
-        bluevector_out => bluevector,
+        bluevector_out => bluevector
 
-        CurrState => currstate,
-        delayDone => delayDone
+        -- CurrState => currstate,
+        -- delayDone => delayDone
 
     );
 
@@ -104,9 +104,9 @@ begin
     process
     begin
         clk <= '0';
-        wait for 5 ns;
+        wait for 1 ns;
         clk <= '1';
-        wait for 5 ns;
+        wait for 1 ns;
     end process;
 
     process
