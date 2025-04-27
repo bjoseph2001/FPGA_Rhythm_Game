@@ -42,7 +42,7 @@ entity GameTimer is
 end GameTimer;
 
 architecture Behavioral of GameTimer is
-    constant GAME_DURATION : integer := 1800; --30 seconds @ 60 fps = 1800 ticks
+    constant GAME_DURATION : integer := 2400; --30 seconds @ 60 fps = 1800 ticks
     signal counter : integer range 0 to GAME_DURATION;
 begin
 

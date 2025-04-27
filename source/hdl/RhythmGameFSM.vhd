@@ -36,7 +36,6 @@ entity RhythmGameFSM is
         clk : in std_logic;
         reset : in std_logic;
         start_button : in std_logic;
-        frame_tick : in std_logic;
         game_done  : in std_logic;
         start_game : out std_logic;
         playing    : out std_logic;
@@ -127,5 +126,6 @@ begin
             last_btn := start_button;
         end if;
     end process;
+
 
 end Behavioral;

@@ -700,13 +700,15 @@ begin
     end if;
   end process PowerUpFSMproc;
 
-  NormalOpFSMproc : process (sclk_signal, Reset)
+  NormalOpFSMproc : process (sclk_signal, Reset, OffDevice)
   begin
     if (Reset = '1') then
       NormalOpState         <= Init;
       NormalOpFSM_Serialize <= '0';
       SPIReady              <= '0';
       --Start_SPI <= '0';
+    elsif(OffDevice = '1') then
+      NormalOpState <= Done;
     elsif (rising_edge(sclk_signal)) then
       case NormalOpState is
         when Init =>

@@ -43,7 +43,7 @@ end entity notecontroller;
 architecture behavioral of notecontroller is
 
   type note_t is record
-    y      : integer range 0 to 127;
+    y      : integer range 0 to 96;
     lane   : integer range 0 to 2;
     active : std_logic;
   end record note_t;

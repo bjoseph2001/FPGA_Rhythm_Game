@@ -44,6 +44,8 @@ entity rhythmgame_top is
     btnd    : in    std_logic; -- start button
     reset_b : in    std_logic;
 
+    Off_Device : in std_logic; -- SW0
+
     -- 7 Segment Display--
     an        : out   std_logic_vector(7 downto 0);
     seg7_cath : out   std_logic_vector(7 downto 0);
@@ -64,8 +66,7 @@ architecture behavioral of rhythmgame_top is
   signal spidata       : std_logic_vector(95 downto 0) := (others => '0');
   signal miso          : std_logic                     := '0'; -- Not used by the OLED module
   signal msgready      : std_logic                     := '0';
-  signal numberofbytes : integer range 0 to 12         := 0;
-  signal offdevice     : std_logic                     := '0';
+  signal numberofbytes : integer                       := 0;
   signal spiready      : std_logic                     := '0';
   signal sclk_s        : std_logic                     := '0';
 
@@ -79,7 +80,9 @@ architecture behavioral of rhythmgame_top is
 
   type disp_array is array(7 downto 0) of std_logic_vector(3 downto 0);
 
-  signal disp : disp_array := (x"0", x"1", x"0", x"0", x"C", x"1", x"0", x"0");
+  signal disp : disp_array := (x"F", x"0", x"0", x"0", x"C", x"0", x"0", x"0");
+  signal score : integer := 0;
+  signal high_score : integer := 0;
 
   -- FSM control
   signal start_game : std_logic;
@@ -111,7 +114,7 @@ begin
       reset         => reset_b,
       msgready      => msgready,
       numberofbytes => numberofbytes,
-      offdevice     => offdevice,
+      offdevice     => Off_Device,
       cs            => cs,
       mosi          => mosi,
       miso          => '0',
@@ -169,6 +172,38 @@ begin
       an        => an,
       seg7_cath => seg7_cath
     );
+
+--Update score when a hit is made
+  process(clk100mhz,reset_b)
+  begin
+    if(reset_b = '1') then
+      score <= 0;
+      high_score <= 0;
+    elsif(rising_edge(clk100mhz)) then
+      if(playing = '1' and hit = '1') then
+        --if hit was made during a game, iterate score
+        score <= score + 1;
+      elsif(show_score = '1') then
+        if(score > high_score) then
+            --if score is higher than high score, update high score
+            high_score <= score;
+        end if;
+      elsif(start_game = '1') then
+        score <= 0;
+      end if;
+    end if;
+  end process;
+  
+  --Display Current Score
+  disp(2) <= std_logic_vector(to_unsigned((score/100),4));
+  disp(1) <= std_logic_vector(to_unsigned(((score mod 100)/10),4));
+  disp(0) <= std_logic_vector(to_unsigned(((score mod 100) mod 10),4));
+  
+  --Display High Score
+  disp(6) <= std_logic_vector(to_unsigned((high_score/100),4));
+  disp(5) <= std_logic_vector(to_unsigned(((high_score mod 100)/10),4));
+  disp(4) <= std_logic_vector(to_unsigned(((high_score mod 100) mod 10),4));
+
 
   -- Game Timer
   timer_inst : entity work.gametimer
@@ -238,7 +273,6 @@ begin
       clk          => clk100mhz,
       reset        => reset_b,
       start_button => start_button,
-      frame_tick   => frame_tick,
       game_done    => game_done,
       start_game   => start_game,
       playing      => playing,
