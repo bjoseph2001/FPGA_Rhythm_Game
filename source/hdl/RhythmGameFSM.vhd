@@ -98,6 +98,10 @@ begin
             if((current_state = idle) and (next_state = game_play))then
                 start_game <= '1';
                 start_counter <= 5; -- Hold start pulse for 5 cycles
+            elsif((current_state = game_over) and (next_state = game_play))then
+                --start next game
+                    start_game <= '1';
+                    start_counter <= 5; -- Hold start pulse for 5 cycles
             elsif(start_counter > 0) then
                 start_counter <= start_counter - 1;
                 start_game <= '1';

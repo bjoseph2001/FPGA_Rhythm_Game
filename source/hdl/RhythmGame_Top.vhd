@@ -211,6 +211,7 @@ begin
       clk        => clk100mhz,
       reset      => reset_b,
       enable     => playing,
+      start_game => start_game,
       frame_tick => frame_tick,
       game_done  => game_done
     );

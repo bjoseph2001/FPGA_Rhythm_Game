@@ -37,13 +37,15 @@ entity GameTimer is
         reset      : in  std_logic;
         enable     : in  std_logic; -- From FSM
         frame_tick : in  std_logic;
+        start_game : in std_logic;
         game_done  : out std_logic
     );
 end GameTimer;
 
 architecture Behavioral of GameTimer is
-    constant GAME_DURATION : integer := 2400; --30 seconds @ 60 fps = 1800 ticks
+    constant GAME_DURATION : integer := 1800; --30 seconds @ 60 fps = 1800 ticks
     signal counter : integer range 0 to GAME_DURATION;
+    signal game_end : std_logic;
 begin
 
     process(clk, reset)
@@ -55,10 +57,13 @@ begin
                 if(counter < GAME_DURATION) then
                     counter <= counter + 1;
                 end if;
+            elsif((game_end = '1') and (start_game = '1')) then
+                    counter <= 0;
             end if;
         end if;
     end process;
 
-    game_done <= '1' when counter >= GAME_DURATION else '0';
+    game_end <= '1' when counter >= GAME_DURATION else '0';
+    game_done <= game_end;
 
 end Behavioral;
